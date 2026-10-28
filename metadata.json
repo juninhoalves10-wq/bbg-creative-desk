@@ -1,0 +1,8 @@
+{
+  "name": "BBG Creative Desk",
+  "description": "Sistema de gestão de demandas criativas e controle de cotas mensais de design para a BBG por Elias Alves - Designer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
