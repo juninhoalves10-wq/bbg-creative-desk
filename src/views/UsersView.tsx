@@ -11,10 +11,12 @@ import {
   Lock,
   X,
   CheckCircle,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const UsersView: React.FC = () => {
-  const { token, isAdmin } = useAuth();
+  const { token, isAdmin, user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,6 +29,12 @@ export const UsersView: React.FC = () => {
   const [department, setDepartment] = useState('Marketing');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Delete user modal
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [actionSuccess, setActionSuccess] = useState('');
 
   const fetchUsers = async () => {
     try {
@@ -71,11 +79,40 @@ export const UsersView: React.FC = () => {
       setShowAddModal(false);
       setName('');
       setEmail('');
+      setActionSuccess('Novo usuário cadastrado com sucesso!');
+      setTimeout(() => setActionSuccess(''), 4000);
       await fetchUsers();
     } catch (err: any) {
       setErrorMsg(err.message || 'Falha ao salvar usuário.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    setDeleting(true);
+    setDeleteError('');
+
+    try {
+      const res = await fetch(`/api/users/${userToDelete.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao excluir usuário.');
+      }
+
+      setActionSuccess(`Usuário ${userToDelete.name} foi removido com sucesso.`);
+      setUserToDelete(null);
+      setTimeout(() => setActionSuccess(''), 4000);
+      await fetchUsers();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Falha ao excluir usuário.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -104,6 +141,13 @@ export const UsersView: React.FC = () => {
         )}
       </div>
 
+      {actionSuccess && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2 shadow-2xs">
+          <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{actionSuccess}</span>
+        </div>
+      )}
+
       {/* Users Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
         <div className="overflow-x-auto">
@@ -115,47 +159,125 @@ export const UsersView: React.FC = () => {
                 <th className="py-3 px-4">Perfil de Acesso</th>
                 <th className="py-3 px-4">Departamento</th>
                 <th className="py-3 px-4">Cota Compartilhada</th>
+                {isAdmin && <th className="py-3 px-4 text-right">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400">
+                  <td colSpan={isAdmin ? 6 : 5} className="py-8 text-center text-slate-400">
                     Carregando usuários...
                   </td>
                 </tr>
               ) : (
-                users.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-3 px-4 font-bold text-slate-900">{u.name}</td>
-                    <td className="py-3 px-4 text-slate-600">{u.email}</td>
-                    <td className="py-3 px-4">
-                      {u.role === 'admin' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-200">
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          Administrador (Designer)
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
-                          Usuário BBG
-                        </span>
+                users.map((u) => {
+                  const isElias = u.id === 'user-elias-admin' || u.email.toLowerCase().includes('elias');
+                  const isCurrent = u.id === user?.id;
+
+                  return (
+                    <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-3 px-4 font-bold text-slate-900">{u.name}</td>
+                      <td className="py-3 px-4 text-slate-600">{u.email}</td>
+                      <td className="py-3 px-4">
+                        {u.role === 'admin' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-200">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            Administrador (Designer)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+                            Usuário BBG
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-slate-700">{u.department || 'Geral'}</td>
+                      <td className="py-3 px-4 text-slate-500">
+                        {u.role === 'bbg_user' ? (
+                          <span className="text-slate-700 font-medium">Franquia coletiva BBG (30/mês)</span>
+                        ) : (
+                          <span className="text-slate-400">Gestor do contrato</span>
+                        )}
+                      </td>
+                      {isAdmin && (
+                        <td className="py-3 px-4 text-right">
+                          {isElias ? (
+                            <span className="text-[11px] text-slate-400 font-medium">Admin Principal</span>
+                          ) : isCurrent ? (
+                            <span className="text-[11px] text-slate-400 font-medium">Sua Conta</span>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setUserToDelete(u);
+                                setDeleteError('');
+                              }}
+                              title={`Excluir ${u.name}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 border border-rose-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Excluir</span>
+                            </button>
+                          )}
+                        </td>
                       )}
-                    </td>
-                    <td className="py-3 px-4 text-slate-700">{u.department || 'Geral'}</td>
-                    <td className="py-3 px-4 text-slate-500">
-                      {u.role === 'bbg_user' ? (
-                        <span className="text-slate-700 font-medium">Franquia coletiva BBG (30/mês)</span>
-                      ) : (
-                        <span className="text-slate-400">Gestor do contrato</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* CONFIRM DELETE MODAL */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200">
+            <div className="flex items-center gap-3 text-rose-600 mb-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-slate-900">Excluir Usuário</h4>
+                <p className="text-xs text-slate-500">Confirmação de exclusão permanente</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              Você tem certeza que deseja excluir o usuário <strong className="text-slate-900">{userToDelete.name}</strong> (<span className="text-slate-700">{userToDelete.email}</span>)?
+              <br />
+              <span className="text-slate-500 text-[11px] mt-1 block">
+                Todas as solicitações e histórico criados por ele serão mantidos no sistema com segurança.
+              </span>
+            </p>
+
+            {deleteError && (
+              <div className="p-3 mb-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs font-medium">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                disabled={deleting}
+                className="px-3.5 py-1.5 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer text-xs font-medium"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg cursor-pointer shadow-sm text-xs flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{deleting ? 'Excluindo...' : 'Sim, Excluir Usuário'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ADD USER MODAL */}
       {showAddModal && (

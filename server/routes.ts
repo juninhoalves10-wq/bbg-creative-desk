@@ -827,11 +827,44 @@ router.post('/demands/:id/status', authMiddleware, requireAdmin, (req: Authentic
     return;
   }
 
+  // Regra de negócio: Se tentar cancelar e já tiver entrega de arte, NÃO PODE CANCELAR!
+  if (status === 'cancelada') {
+    const deliveryCount = (db.prepare('SELECT COUNT(*) as count FROM demand_deliveries WHERE demand_id = ?').get(id) as { count: number }).count;
+    if (deliveryCount >= 1) {
+      res.status(400).json({ error: 'Não é possível cancelar: esta demanda já possui versão(ões) de arte entregue(s) pelo designer.' });
+      return;
+    }
+  }
+
   const oldStatus = demand.status;
 
   db.transaction(() => {
     let updateSql = 'UPDATE demands SET status = ?';
     const params: any[] = [status];
+
+    // Se cancelar demanda regular sem entregas, estorna 1 crédito
+    if (status === 'cancelada' && oldStatus !== 'cancelada' && !demand.is_extra) {
+      db.prepare(`
+        UPDATE monthly_competencies
+        SET credits_used = MAX(0, credits_used - 1), updated_at = datetime('now')
+        WHERE id = ?
+      `).run(demand.competency_id);
+
+      db.prepare(`
+        INSERT INTO credit_transactions (id, group_id, competency_id, demand_id, amount, type, description, user_id)
+        VALUES (?, ?, ?, ?, 1, 'refund', 'Estorno de 1 crédito por cancelamento de solicitação sem entregas', ?)
+      `).run(`tx-${Date.now()}`, demand.group_id, demand.competency_id, id, req.user!.id);
+    }
+
+    // Se cancelar, remove da fila e reordena
+    if (status === 'cancelada' && demand.queue_position > 0) {
+      updateSql += ', queue_position = NULL';
+      db.prepare(`
+        UPDATE demands
+        SET queue_position = queue_position - 1
+        WHERE group_id = ? AND queue_position > ?
+      `).run(demand.group_id, demand.queue_position);
+    }
 
     // If changing to 'em_producao' for the first time
     if (status === 'em_producao' && !demand.production_started_at) {
@@ -858,6 +891,11 @@ router.post('/demands/:id/status', authMiddleware, requireAdmin, (req: Authentic
       cancelada: 'Cancelada',
     };
 
+    let desc = `${req.user!.name} alterou o status de "${statusLabels[oldStatus] || oldStatus}" para "${statusLabels[status]}". ${notes ? 'Observações: ' + notes : ''}`;
+    if (status === 'cancelada' && !demand.is_extra) {
+      desc += ' Como nenhuma versão havia sido entregue, 1 crédito foi estornado para a cota mensal.';
+    }
+
     db.prepare(`
       INSERT INTO demand_timeline (id, demand_id, event_type, title, description, user_id)
       VALUES (?, ?, 'status_changed', ?, ?, ?)
@@ -865,12 +903,173 @@ router.post('/demands/:id/status', authMiddleware, requireAdmin, (req: Authentic
       `tl-${Date.now()}`,
       id,
       `Status alterado para "${statusLabels[status]}"`,
-      `${req.user!.name} alterou o status de "${statusLabels[oldStatus] || oldStatus}" para "${statusLabels[status]}". ${notes ? 'Observações: ' + notes : ''}`,
+      desc,
       req.user!.id
     );
   })();
 
   res.json({ success: true, oldStatus, newStatus: status });
+});
+
+// POST /api/demands/:id/cancel (Cancel demand if 0 versions delivered)
+router.post('/demands/:id/cancel', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const demand = db.prepare('SELECT * FROM demands WHERE id = ?').get(id) as any;
+  if (!demand) {
+    res.status(404).json({ error: 'Demanda não encontrada.' });
+    return;
+  }
+
+  // Security: Admin or Requester can cancel
+  if (req.user!.role !== 'admin' && demand.created_by !== req.user!.id) {
+    res.status(403).json({ error: 'Você só pode cancelar solicitações criadas por você.' });
+    return;
+  }
+
+  if (demand.status === 'cancelada') {
+    res.status(400).json({ error: 'Esta demanda já está cancelada.' });
+    return;
+  }
+
+  if (demand.status === 'aprovada') {
+    res.status(400).json({ error: 'Esta demanda já foi aprovada e finalizada.' });
+    return;
+  }
+
+  // Regra crítica de negócio:
+  // Se tiver entregue pelo menos 1 versão, NÃO PODE CANCELAR!
+  // Se NÃO tiver enviado nenhuma versão, dá direito a estorno de 1 crédito!
+  const deliveryCount = (db.prepare('SELECT COUNT(*) as count FROM demand_deliveries WHERE demand_id = ?').get(id) as { count: number }).count;
+  if (deliveryCount >= 1) {
+    res.status(400).json({ error: 'Não é possível cancelar: esta demanda já possui versão(ões) de arte entregue(s) pelo designer.' });
+    return;
+  }
+
+  db.transaction(() => {
+    let creditRefunded = false;
+    // Refund 1 credit if it was a regular demand
+    if (!demand.is_extra) {
+      db.prepare(`
+        UPDATE monthly_competencies
+        SET credits_used = MAX(0, credits_used - 1), updated_at = datetime('now')
+        WHERE id = ?
+      `).run(demand.competency_id);
+
+      db.prepare(`
+        INSERT INTO credit_transactions (id, group_id, competency_id, demand_id, amount, type, description, user_id)
+        VALUES (?, ?, ?, ?, 1, 'refund', 'Estorno de 1 crédito por cancelamento de solicitação sem entregas', ?)
+      `).run(`tx-${Date.now()}`, demand.group_id, demand.competency_id, id, req.user!.id);
+      creditRefunded = true;
+    }
+
+    // Re-compact queue if it was in queue
+    if (demand.queue_position > 0) {
+      db.prepare(`
+        UPDATE demands
+        SET queue_position = queue_position - 1
+        WHERE group_id = ? AND queue_position > ?
+      `).run(demand.group_id, demand.queue_position);
+    }
+
+    db.prepare(`
+      UPDATE demands
+      SET status = 'cancelada', queue_position = NULL, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+
+    // Record status history
+    db.prepare(`
+      INSERT INTO demand_status_history (id, demand_id, old_status, new_status, notes, changed_by)
+      VALUES (?, ?, ?, 'cancelada', ?, ?)
+    `).run(`sh-${Date.now()}`, id, demand.status, reason || 'Demanda cancelada', req.user!.id);
+
+    // Record timeline
+    const refundMsg = creditRefunded ? ' Como nenhuma versão havia sido entregue, 1 crédito foi estornado para a cota mensal.' : '';
+    db.prepare(`
+      INSERT INTO demand_timeline (id, demand_id, event_type, title, description, user_id)
+      VALUES (?, ?, 'demand_cancelled', 'Solicitação Cancelada', ?, ?)
+    `).run(
+      `tl-${Date.now()}`,
+      id,
+      `${req.user!.name} cancelou a solicitação.${refundMsg}${reason ? ' Motivo: ' + reason : ''}`,
+      req.user!.id
+    );
+
+    // Notify other party
+    db.prepare(`
+      INSERT INTO notifications (id, user_id, group_id, demand_id, title, message, type)
+      VALUES (?, NULL, ?, ?, ?, ?, 'demand_cancelled')
+    `).run(
+      `notif-${Date.now()}`,
+      demand.group_id,
+      id,
+      `Demanda Cancelada: ${demand.code}`,
+      `${req.user!.name} cancelou "${demand.title}".${refundMsg}`
+    );
+  })();
+
+  res.json({ success: true, message: 'Demanda cancelada com sucesso.' });
+});
+
+// DELETE /api/demands/:id (Permanent deletion of demand)
+router.delete('/demands/:id', authMiddleware, (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+
+  const demand = db.prepare('SELECT * FROM demands WHERE id = ?').get(id) as any;
+  if (!demand) {
+    res.status(404).json({ error: 'Demanda não encontrada.' });
+    return;
+  }
+
+  // Security: only Admin Elias or the creator (if no deliveries) can delete permanently
+  const deliveryCount = (db.prepare('SELECT COUNT(*) as count FROM demand_deliveries WHERE demand_id = ?').get(id) as { count: number }).count;
+  if (req.user!.role !== 'admin' && demand.created_by !== req.user!.id) {
+    res.status(403).json({ error: 'Permissão negada. Apenas o administrador ou o solicitante podem apagar a demanda.' });
+    return;
+  }
+
+  if (req.user!.role !== 'admin' && deliveryCount > 0) {
+    res.status(403).json({ error: 'Não é possível apagar uma demanda que já possui versões entregues.' });
+    return;
+  }
+
+  db.transaction(() => {
+    // If active regular demand that was not cancelled, refund the credit
+    if (!demand.is_extra && demand.status !== 'cancelada') {
+      db.prepare(`
+        UPDATE monthly_competencies
+        SET credits_used = MAX(0, credits_used - 1), updated_at = datetime('now')
+        WHERE id = ?
+      `).run(demand.competency_id);
+
+      db.prepare(`
+        INSERT INTO credit_transactions (id, group_id, competency_id, demand_id, amount, type, description, user_id)
+        VALUES (?, ?, ?, NULL, 1, 'refund', 'Estorno de 1 crédito por exclusão definitiva da demanda ${demand.code}', ?)
+      `).run(`tx-${Date.now()}`, demand.group_id, demand.competency_id, req.user!.id);
+    }
+
+    // Re-compact queue if in queue
+    if (demand.queue_position > 0) {
+      db.prepare(`
+        UPDATE demands
+        SET queue_position = queue_position - 1
+        WHERE group_id = ? AND queue_position > ?
+      `).run(demand.group_id, demand.queue_position);
+    }
+
+    // Delete child rows
+    db.prepare('DELETE FROM demand_deliveries WHERE demand_id = ?').run(id);
+    db.prepare('DELETE FROM demand_files WHERE demand_id = ?').run(id);
+    db.prepare('DELETE FROM demand_comments WHERE demand_id = ?').run(id);
+    db.prepare('DELETE FROM demand_timeline WHERE demand_id = ?').run(id);
+    db.prepare('DELETE FROM demand_status_history WHERE demand_id = ?').run(id);
+    db.prepare('DELETE FROM notifications WHERE demand_id = ?').run(id);
+    db.prepare('DELETE FROM demands WHERE id = ?').run(id);
+  })();
+
+  res.json({ success: true, message: 'Demanda excluída definitivamente com sucesso.' });
 });
 
 // POST /api/demands/:id/prazo (Admin sets or changes agreed deadline)

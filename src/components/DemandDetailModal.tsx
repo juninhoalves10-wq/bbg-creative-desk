@@ -30,6 +30,7 @@ import {
   ClipboardPaste,
   Trash2,
   Maximize2,
+  Ban,
 } from 'lucide-react';
 
 interface DemandDetailModalProps {
@@ -69,6 +70,12 @@ export const DemandDetailModal: React.FC<DemandDetailModalProps> = ({ demandId, 
   const [extraCostInput, setExtraCostInput] = useState('80.00');
   const [extraCostTerms, setExtraCostTerms] = useState('Criação de arte extra fora do pacote contratado. Incluso 1 rodada de ajustes.');
   const [extraRejectionReason, setExtraRejectionReason] = useState('');
+
+  // Cancel & Delete Modals
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Comment input
   const [newComment, setNewComment] = useState('');
@@ -309,18 +316,74 @@ export const DemandDetailModal: React.FC<DemandDetailModalProps> = ({ demandId, 
   };
 
   const handleStatusChange = async (newStatus: string) => {
+    setActionError(null);
+    if (newStatus === 'cancelada' && (demand?.deliveries?.length || 0) > 0) {
+      setActionError('Não é permitido cancelar uma demanda que já possui versão(ões) entregue(s) pelo designer.');
+      return;
+    }
     try {
       const res = await fetch(`/api/demands/${demandId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) {
-        await fetchDemandDetails();
-        onUpdated();
+      const data = await res.json();
+      if (!res.ok) {
+        setActionError(data.error || 'Erro ao alterar status.');
+        return;
       }
-    } catch (err) {
-      console.error(err);
+      await fetchDemandDetails();
+      onUpdated();
+    } catch (err: any) {
+      setActionError(err.message || 'Erro ao alterar status.');
+    }
+  };
+
+  const handleCancelDemand = async () => {
+    setSubmittingAction(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/demands/${demandId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: cancelReason.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionError(data.error || 'Erro ao cancelar demanda.');
+        return;
+      }
+      setShowCancelModal(false);
+      setCancelReason('');
+      await fetchDemandDetails();
+      onUpdated();
+    } catch (err: any) {
+      setActionError(err.message || 'Erro ao cancelar demanda.');
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
+  const handleDeleteDemand = async () => {
+    setSubmittingAction(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/demands/${demandId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionError(data.error || 'Erro ao excluir demanda.');
+        return;
+      }
+      setShowDeleteModal(false);
+      onUpdated();
+      onClose();
+    } catch (err: any) {
+      setActionError(err.message || 'Erro ao excluir demanda.');
+    } finally {
+      setSubmittingAction(false);
     }
   };
 
