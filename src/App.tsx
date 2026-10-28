@@ -12,6 +12,7 @@ import { UsersView } from './views/UsersView';
 import { NotificationsView } from './views/NotificationsView';
 import { NewDemandModal } from './components/NewDemandModal';
 import { DemandDetailModal } from './components/DemandDetailModal';
+import { LoginView } from './views/LoginView';
 import { DashboardStats, MonthlyCompetency, NotificationItem } from './types';
 import { formatCompetencyName } from './utils/date';
 
@@ -102,6 +103,11 @@ function MainApp() {
         Carregando BBG Creative Desk...
       </div>
     );
+  }
+
+  // If user is not authenticated, render the Login Screen
+  if (!user) {
+    return <LoginView />;
   }
 
   // Titles mapping

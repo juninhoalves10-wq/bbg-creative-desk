@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAuth } from '../context/AuthContext';
 import { DashboardStats, Demand } from '../types';
 import { formatDate, formatDateTime, formatCompetencyName } from '../utils/date';
 import { StatusBadge, ExtraDemandBanner } from '../components/StatusBadge';
@@ -33,6 +34,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
   onSelectDemand,
 }) => {
+  const { user, isAdmin } = useAuth();
   if (loading || !stats) {
     return (
       <div className="p-8 text-center text-slate-400">
@@ -57,6 +59,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <p className="text-xs text-slate-300 max-w-xl">
             Franquia de 30 artes mensais compartilhada entre todos os usuários da BBG. Demandas regulares consomem 1 crédito no registro.
           </p>
+          {user && (
+            <div className="pt-2 flex items-center gap-2 text-xs text-indigo-200">
+              <User className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Conectado como <strong className="text-white">{user.name}</strong> ({isAdmin ? 'Designer Elias Alves' : `BBG ${user.department}`})</span>
+            </div>
+          )}
         </div>
 
         {/* Big Counter Stats in Banner */}

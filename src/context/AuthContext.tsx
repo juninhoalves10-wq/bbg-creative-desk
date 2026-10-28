@@ -47,8 +47,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (token) {
       fetchCurrentUser(token);
     } else {
-      // Default to Elias Alves (Admin) on first load for immediate usability
-      switchUser('user-elias-admin').finally(() => setLoading(false));
+      setLoading(false);
+      setUser(null);
     }
   }, []);
 
@@ -60,17 +60,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ email, password }),
       });
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || 'Falha no login');
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Credenciais inválidas. Verifique seu e-mail e senha.');
       }
       const data = await res.json();
       localStorage.setItem('bbg_token', data.token);
       setToken(data.token);
       setUser(data.user);
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Login error:', err);
-      return false;
+      throw err;
     }
   };
 

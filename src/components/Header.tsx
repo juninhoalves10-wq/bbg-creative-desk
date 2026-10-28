@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Calendar, Bell, Shield, Users, RefreshCw } from 'lucide-react';
+import { Calendar, Bell, RefreshCw, LogOut } from 'lucide-react';
 
 interface HeaderProps {
   title: string;
@@ -19,7 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   availableCompetencies = [],
   onRefresh,
 }) => {
-  const { user, isAdmin, switchUser } = useAuth();
+  const { user, isAdmin, logout } = useAuth();
 
   return (
     <header className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-20">
@@ -50,32 +50,28 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Quick Role Switcher Bar for immediate interactive testing */}
-        <div className="hidden lg:flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80 text-xs">
-          <span className="text-[10px] uppercase font-bold text-slate-400 px-1">Simular:</span>
-          <button
-            onClick={() => switchUser('user-elias-admin')}
-            className={`px-2.5 py-1 rounded-md font-medium text-xs transition-colors cursor-pointer flex items-center gap-1 ${
-              user?.id === 'user-elias-admin'
-                ? 'bg-white text-indigo-700 font-bold shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Shield className="w-3 h-3 text-indigo-600" />
-            <span>Elias (Designer)</span>
-          </button>
-          <button
-            onClick={() => switchUser('user-bbg-marketing')}
-            className={`px-2.5 py-1 rounded-md font-medium text-xs transition-colors cursor-pointer flex items-center gap-1 ${
-              user?.id === 'user-bbg-marketing'
-                ? 'bg-white text-emerald-700 font-bold shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Users className="w-3 h-3 text-emerald-600" />
-            <span>Mariana (BBG)</span>
-          </button>
+        {/* Logged in user info badge */}
+        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
+          <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center font-bold text-[10px] text-slate-700">
+            {user?.name ? user.name[0] : 'U'}
+          </div>
+          <div className="flex flex-col">
+            <span className="font-bold text-slate-900 leading-none">{user?.name}</span>
+            <span className="text-[10px] text-slate-500 leading-tight">
+              {isAdmin ? 'Designer (Admin)' : `BBG • ${user?.department || 'Equipe'}`}
+            </span>
+          </div>
         </div>
+
+        {/* Real Logout button */}
+        <button
+          onClick={logout}
+          title="Sair da conta"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Sair</span>
+        </button>
 
         {onRefresh && (
           <button

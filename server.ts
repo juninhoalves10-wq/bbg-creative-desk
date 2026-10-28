@@ -1,4 +1,5 @@
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
@@ -37,7 +38,9 @@ async function startServer() {
     });
   });
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  const distPath = path.resolve(__dirname, 'dist');
+  const hasDist = fs.existsSync(path.resolve(distPath, 'index.html'));
+  const isProduction = process.env.NODE_ENV === 'production' || hasDist;
 
   if (!isProduction) {
     // Mount Vite middleware for development

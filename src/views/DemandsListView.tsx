@@ -20,11 +20,13 @@ interface DemandsListViewProps {
 }
 
 export const DemandsListView: React.FC<DemandsListViewProps> = ({ onSelectDemand, onOpenNewDemand }) => {
-  const { token, isAdmin } = useAuth();
+  const { token, user, isAdmin } = useAuth();
   const [demands, setDemands] = useState<Demand[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // For non-admin, allow toggling between all BBG group demands and user's own demands
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'mine'>('all');
 
   const fetchDemands = async () => {
     try {
@@ -33,6 +35,7 @@ export const DemandsListView: React.FC<DemandsListViewProps> = ({ onSelectDemand
       const params = new URLSearchParams();
       if (statusFilter) params.append('status', statusFilter);
       if (search) params.append('search', search);
+      if (scopeFilter === 'mine') params.append('myDemands', 'true');
 
       if (params.toString()) {
         url += `?${params.toString()}`;
@@ -54,7 +57,7 @@ export const DemandsListView: React.FC<DemandsListViewProps> = ({ onSelectDemand
 
   useEffect(() => {
     fetchDemands();
-  }, [statusFilter]);
+  }, [statusFilter, scopeFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +89,32 @@ export const DemandsListView: React.FC<DemandsListViewProps> = ({ onSelectDemand
             <span>Nova solicitação</span>
           </button>
         </div>
+      </div>
+
+      {/* Scope Selector: All Demands vs My Demands */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
+        <button
+          onClick={() => setScopeFilter('all')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2 ${
+            scopeFilter === 'all'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Files className="w-3.5 h-3.5" />
+          <span>{isAdmin ? 'Todas as Demandas' : 'Todas do Grupo BBG'}</span>
+        </button>
+        <button
+          onClick={() => setScopeFilter('mine')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-2 ${
+            scopeFilter === 'mine'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <User className="w-3.5 h-3.5" />
+          <span>Apenas as Minhas Solicitações</span>
+        </button>
       </div>
 
       {/* Filter and Search Bar */}

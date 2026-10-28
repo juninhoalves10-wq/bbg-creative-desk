@@ -9,12 +9,9 @@ import {
   Coins,
   Users as UsersIcon,
   AlertTriangle,
-  History,
   Bell,
   Palette,
   LogOut,
-  ChevronDown,
-  ShieldCheck,
   User as UserIcon,
 } from 'lucide-react';
 
@@ -33,16 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   monthlyStats,
   unreadNotifsCount = 0,
 }) => {
-  const { user, isAdmin, switchUser, logout } = useAuth();
-  const [showUserMenu, setShowUserMenu] = React.useState(false);
-
-  // Demo user options
-  const switchOptions = [
-    { id: 'user-elias-admin', name: 'Elias Alves', role: 'Administrador (Designer)', dept: 'Design & Criação' },
-    { id: 'user-bbg-marketing', name: 'Mariana Silva', role: 'Usuário BBG', dept: 'Marketing' },
-    { id: 'user-bbg-comercial', name: 'Carlos Eduardo', role: 'Usuário BBG', dept: 'Comercial' },
-    { id: 'user-bbg-diretoria', name: 'Renata Vasconcelos', role: 'Usuário BBG', dept: 'Diretoria' },
-  ];
+  const { user, isAdmin, logout } = useAuth();
 
   return (
     <aside className="w-68 bg-white border-r border-slate-200 flex flex-col h-screen shrink-0 sticky top-0 select-none">
@@ -225,14 +213,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* User profile & Fast Role Switcher */}
-      <div className="p-3 border-t border-slate-200 bg-white relative">
-        <button
-          onClick={() => setShowUserMenu(!showUserMenu)}
-          className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer text-left"
-        >
+      {/* User profile & Logout */}
+      <div className="p-3 border-t border-slate-200 bg-white">
+        <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200/80">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-9 h-9 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-700 text-xs">
+            <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-slate-700 text-xs">
               {user?.avatar_url ? (
                 <img src={user.avatar_url} alt={user.name} className="w-full h-full object-cover" />
               ) : (
@@ -241,48 +226,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="truncate">
               <p className="text-xs font-bold text-slate-900 truncate">{user?.name || 'Usuário'}</p>
-              <div className="flex items-center gap-1 text-[10px] text-slate-500">
+              <div className="flex items-center gap-1 text-[10px] text-slate-500 truncate">
                 {isAdmin ? (
-                  <span className="inline-flex items-center gap-0.5 font-semibold text-indigo-700">
-                    <ShieldCheck className="w-3 h-3" /> Designer (Admin)
-                  </span>
+                  <span className="font-semibold text-indigo-700">Designer (Admin)</span>
                 ) : (
-                  <span>BBG — {user?.department || 'Equipe'}</span>
+                  <span>BBG • {user?.department || 'Equipe'}</span>
                 )}
               </div>
             </div>
           </div>
-          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
-        </button>
 
-        {/* User Switcher Dropdown */}
-        {showUserMenu && (
-          <div className="absolute bottom-16 left-3 right-3 bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50">
-            <div className="text-[11px] font-bold text-slate-400 uppercase px-2 py-1 mb-1">
-              Trocar perfil para teste
-            </div>
-            {switchOptions.map((opt) => (
-              <button
-                key={opt.id}
-                onClick={async () => {
-                  await switchUser(opt.id);
-                  setShowUserMenu(false);
-                }}
-                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex flex-col transition-colors cursor-pointer ${
-                  user?.id === opt.id
-                    ? 'bg-indigo-50 text-indigo-900 border border-indigo-200'
-                    : 'hover:bg-slate-50 text-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold">{opt.name}</span>
-                  <span className="text-[10px] text-slate-500">{opt.dept}</span>
-                </div>
-                <span className="text-[10px] text-slate-400">{opt.role}</span>
-              </button>
-            ))}
-          </div>
-        )}
+          <button
+            onClick={logout}
+            title="Sair do sistema"
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </aside>
   );

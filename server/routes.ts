@@ -66,13 +66,51 @@ router.post('/auth/login', (req, res: Response) => {
     return;
   }
 
-  const user = db.prepare(`
+  const cleanEmail = email.toLowerCase().trim();
+  let user = db.prepare(`
     SELECT u.*, gm.group_id, g.name as group_name, gm.can_reorder_queue
     FROM users u
     LEFT JOIN group_members gm ON u.id = gm.user_id
     LEFT JOIN groups g ON gm.group_id = g.id
-    WHERE LOWER(u.email) = LOWER(?)
-  `).get(email) as any;
+    WHERE LOWER(u.email) = ?
+  `).get(cleanEmail) as any;
+
+  if (!user) {
+    // Helpful alias matching for common domain variations (bbg.com, bbg.com.br, bbgcreative.com)
+    if (cleanEmail === 'elias@bbg.com' || cleanEmail === 'elias@bbgcreative.com' || cleanEmail === 'admin@bbg.com') {
+      user = db.prepare(`
+        SELECT u.*, gm.group_id, g.name as group_name, gm.can_reorder_queue
+        FROM users u
+        LEFT JOIN group_members gm ON u.id = gm.user_id
+        LEFT JOIN groups g ON gm.group_id = g.id
+        WHERE u.id = 'user-elias-admin'
+      `).get() as any;
+    } else if (cleanEmail.startsWith('marketing@bbg')) {
+      user = db.prepare(`
+        SELECT u.*, gm.group_id, g.name as group_name, gm.can_reorder_queue
+        FROM users u
+        LEFT JOIN group_members gm ON u.id = gm.user_id
+        LEFT JOIN groups g ON gm.group_id = g.id
+        WHERE u.id = 'user-bbg-marketing'
+      `).get() as any;
+    } else if (cleanEmail.startsWith('comercial@bbg')) {
+      user = db.prepare(`
+        SELECT u.*, gm.group_id, g.name as group_name, gm.can_reorder_queue
+        FROM users u
+        LEFT JOIN group_members gm ON u.id = gm.user_id
+        LEFT JOIN groups g ON gm.group_id = g.id
+        WHERE u.id = 'user-bbg-comercial'
+      `).get() as any;
+    } else if (cleanEmail.startsWith('diretoria@bbg')) {
+      user = db.prepare(`
+        SELECT u.*, gm.group_id, g.name as group_name, gm.can_reorder_queue
+        FROM users u
+        LEFT JOIN group_members gm ON u.id = gm.user_id
+        LEFT JOIN groups g ON gm.group_id = g.id
+        WHERE u.id = 'user-bbg-diretoria'
+      `).get() as any;
+    }
+  }
 
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     res.status(401).json({ error: 'Credenciais inválidas. Verifique o e-mail e a senha.' });
@@ -398,6 +436,17 @@ router.get('/demands', authMiddleware, (req: AuthenticatedRequest, res: Response
     query += ` AND (d.title LIKE ? OR d.code LIKE ? OR d.briefing LIKE ?)`;
     const s = `%${search}%`;
     params.push(s, s, s);
+  }
+
+  const createdBy = req.query.createdBy as string;
+  const myDemands = req.query.myDemands === 'true';
+
+  if (createdBy) {
+    query += ` AND d.created_by = ?`;
+    params.push(createdBy);
+  } else if (myDemands) {
+    query += ` AND d.created_by = ?`;
+    params.push(req.user!.id);
   }
 
   query += ` ORDER BY d.created_at DESC`;
